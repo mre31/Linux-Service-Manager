@@ -38,23 +38,42 @@
 </head>
 <body class="bg-gray-900 text-gray-200 min-h-screen">
 
+    <!-- Flash Messages Container -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div id="flash-messages-container" class="fixed top-4 right-4 w-auto max-w-md z-50 space-y-3">
+            {% for category, message in messages %}
+            <div class="relative flex items-start p-4 rounded-lg shadow-xl 
+                        {% if category == 'error' %}bg-red-600 border border-red-500 text-red-100
+                        {% elif category == 'success' %}bg-green-600 border border-green-500 text-green-100
+                        {% elif category == 'info' %}bg-blue-600 border border-blue-500 text-blue-100
+                        {% else %}bg-yellow-500 border border-yellow-400 text-yellow-100{% endif %}"
+                 role="alert">
+                <div class="flex-grow">
+                    <p class="text-sm font-medium">{{ message }}</p>
+                </div>
+                <button onclick="this.closest('[role=\'alert\']').remove()" 
+                        class="ml-3 -mr-1 -my-1 p-1 rounded-md 
+                               {% if category == 'error' %}hover:bg-red-700 focus:bg-red-700
+                               {% elif category == 'success' %}hover:bg-green-700 focus:bg-green-700
+                               {% elif category == 'info' %}hover:bg-blue-700 focus:bg-blue-700
+                               {% else %}hover:bg-yellow-600 focus:bg-yellow-600{% endif %} 
+                               focus:outline-none focus:ring-2 focus:ring-white transition ease-in-out duration-150">
+                    <span class="sr-only">Kapat</span>
+                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
     <div class="container mx-auto p-4 md:p-8">
         <header class="mb-8">
             <h1 class="text-3xl md:text-4xl font-bold text-gray-100">Linux Servis Yöneticisi</h1>
         </header>
-
-        <!-- Flash Messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-            <div id="flash-messages-container" class="mb-4 space-y-2">
-                {% for category, message in messages %}
-                <div class="p-4 rounded-md {% if category == 'error' %}bg-red-700 text-red-100 border border-red-600{% elif category == 'success' %}bg-green-700 text-green-100 border border-green-600{% elif category == 'info' %}bg-blue-700 text-blue-100 border border-blue-600{% else %}bg-yellow-600 text-yellow-100 border border-yellow-500{% endif %}" role="alert">
-                    <p>{{ message }}</p>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-        {% endwith %}
 
         <div class="mb-6 text-right">
             <button onclick="openModal('createServiceModal')" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out">
@@ -133,14 +152,14 @@
 
     <!-- Create Service Modal -->
     <div id="createServiceModal" class="modal fixed inset-0 bg-gray-900 bg-opacity-80 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50" onclick="checkCloseModal(event, 'createServiceModal')">
-        <div class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-xl w-11/12 md:w-2/3 lg:w-1/2 max-h-screen overflow-y-auto">
+        <div class="modal-content bg-gray-800 p-4 md:p-6 rounded-lg shadow-xl w-11/12 md:w-2/3 lg:w-1/2 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-2xl font-semibold text-gray-100">Yeni Servis Oluştur</h2>
                 <button onclick="closeModal('createServiceModal')" class="text-gray-500 hover:text-gray-300 transition duration-150">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
             </div>
-            <form action="{{ url_for('create_service') }}" method="post" enctype="multipart/form-data" class="space-y-4">
+            <form action="{{ url_for('create_service') }}" method="post" enctype="multipart/form-data" class="space-y-3">
                 <div>
                     <label for="create_service_name" class="block text-sm font-medium text-gray-300 mb-1">Servis Adı <span class="text-red-400">*</span></label>
                     <input type="text" id="create_service_name" name="service_name" required class="mt-1 block w-full px-3 py-2 bg-gray-700 border border-gray-600 text-gray-200 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="nginx_proxy">
@@ -186,14 +205,14 @@
 
     <!-- Edit Service Modal -->
     <div id="editServiceModal" class="modal fixed inset-0 bg-gray-900 bg-opacity-80 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50" onclick="checkCloseModal(event, 'editServiceModal')">
-        <div class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-xl w-11/12 md:w-2/3 lg:w-1/2 max-h-screen overflow-y-auto">
+        <div class="modal-content bg-gray-800 p-4 md:p-6 rounded-lg shadow-xl w-11/12 md:w-2/3 lg:w-1/2 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-2xl font-semibold text-gray-100">Servisi Düzenle</h2>
                 <button onclick="closeModal('editServiceModal')" class="text-gray-500 hover:text-gray-300 transition duration-150">
                      <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
             </div>
-            <form id="editServiceForm" method="post" enctype="multipart/form-data" class="space-y-4">
+            <form id="editServiceForm" method="post" enctype="multipart/form-data" class="space-y-3">
                  <div>
                     <label class="block text-sm font-medium text-gray-300 mb-1">Servis Adı</label>
                     <input type="text" id="edit_service_name_display" name="service_name_display" readonly class="mt-1 block w-full px-3 py-2 bg-gray-700 border-gray-600 text-gray-400 rounded-md shadow-sm sm:text-sm" placeholder="Servis adı değiştirilemez">
@@ -413,17 +432,27 @@
         setTimeout(() => {
             const flashContainer = document.getElementById('flash-messages-container');
             if (flashContainer) {
+                // Changed to remove individual alerts one by one if they don't have a close button handled by user
+                // For now, the close button is primary. This auto-hide can be a fallback or adjusted.
+                // Let's make it fade out the whole container if any messages are left.
                 let opacity = 1;
-                const fadeInterval = setInterval(function() {
-                    if (opacity <= 0) {
-                        clearInterval(fadeInterval);
-                        flashContainer.style.display = 'none';
-                    }
-                    flashContainer.style.opacity = opacity;
-                    opacity -= 0.05;
-                }, 50);
+                const children = Array.from(flashContainer.children);
+                if (children.length > 0) { // Only fade if there are messages
+                    const fadeInterval = setInterval(function() {
+                        if (opacity <= 0) {
+                            clearInterval(fadeInterval);
+                            // flashContainer.style.display = 'none'; // Hide the container
+                            // Or remove all children that might be left
+                            children.forEach(child => child.remove());
+                            if(flashContainer.children.length === 0) flashContainer.remove();
+
+                        }
+                        flashContainer.style.opacity = opacity;
+                        opacity -= 0.02; // Slower fade for better UX
+                    }, 100); // Check every 100ms
+                }
             }
-        }, 5000); // Hide after 5 seconds
+        }, 7000); // Hide after 7 seconds
     </script>
 </body>
 </html> 

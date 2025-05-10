@@ -44,14 +44,14 @@ def run_system_command(command_parts, successful_return_codes=None):
             "stdout": result.stdout.strip(), 
             "stderr": result.stderr.strip(), 
             "returncode": result.returncode, 
-            "is_ok": is_ok
+            "success": is_ok
         }
 
     except Exception as e:
         error_message = f"Exception executing '{' '.join(command_parts)}': {e}"
         flash(error_message, 'error')
         print(error_message)
-        return {"stdout": "", "stderr": str(e), "returncode": -1, "is_ok": False}
+        return {"stdout": "", "stderr": str(e), "returncode": -1, "success": False}
 
 @app.route('/')
 def index():
@@ -117,7 +117,7 @@ def get_systemd_services():
                 # Check active state
                 active_cmd_res = run_system_command(['systemctl', 'is-active', service_file], successful_return_codes=[0, 3])
 
-                if active_cmd_res["is_ok"]:
+                if active_cmd_res["success"]:
                     service_stdout = active_cmd_res["stdout"]
                     service_rc = active_cmd_res["returncode"]
                     status = service_stdout # Base status from is-active output (e.g., "active", "inactive", "failed")
@@ -125,7 +125,7 @@ def get_systemd_services():
                     if service_rc == 3 and status != "failed": # if is-active reported not active and didn't already say "failed"
                         # Double-check with is-failed, as is-active might just say 'inactive' for a failed unit
                         failed_cmd_res = run_system_command(['systemctl', 'is-failed', service_file], successful_return_codes=[0, 1])
-                        if failed_cmd_res["is_ok"]:
+                        if failed_cmd_res["success"]:
                             if failed_cmd_res["returncode"] == 0: # Unit is genuinely failed
                                 status = "failed"
                             # else: it's not failed, so status (likely "inactive") is correct.
@@ -234,6 +234,15 @@ def create_service():
             shutil.rmtree(service_code_path, ignore_errors=True)
         return redirect(url_for('index'))
 
+    # Change ownership of the service code directory if service_user is specified
+    if service_user:
+        chown_command = f"chown -R {service_user}:{service_user} '{service_code_path}'"
+        chown_result = run_system_command(chown_command)
+        if not chown_result['success']:
+            flash(f"Uyarı: Servis kod dizininin ({service_code_path}) sahibi {service_user} olarak ayarlanamadı. Hata: {chown_result['stderr']}", 'warning')
+        else:
+            flash(f"Servis kod dizininin ({service_code_path}) sahibi başarıyla {service_user} olarak ayarlandı.", "info")
+
     # Create .service file
     # Ensure service_code_path is absolute for WorkingDirectory
     absolute_service_code_path = os.path.abspath(service_code_path)
@@ -276,13 +285,13 @@ WantedBy=multi-user.target
 
     # Reload systemd and enable the service
     daemon_reload_res = run_system_command(['systemctl', 'daemon-reload'])
-    if daemon_reload_res["is_ok"]:
+    if daemon_reload_res["success"]:
         flash("Systemd daemon reloaded.", "info")
         
         # Optionally enable the service so it starts on boot
         # Ensure service_unit_filepath is used here if it's the full path
         enable_res = run_system_command(['systemctl', 'enable', service_unit_filepath]) # service_unit_filename is just 'name.service'
-        if enable_res["is_ok"]:
+        if enable_res["success"]:
             flash(f"Service {service_unit_filepath} enabled.", "info")
         # else: error already flashed by run_system_command
 
@@ -299,7 +308,7 @@ def start_service(service_file_name):
         return redirect(url_for('index'))
         
     start_res = run_system_command(['systemctl', 'start', safe_service_name])
-    if start_res["is_ok"]:
+    if start_res["success"]:
         flash(f"Service {safe_service_name} started.", "success")
     # else: error already flashed by run_system_command
     return redirect(url_for('index'))
@@ -312,7 +321,7 @@ def stop_service(service_file_name):
         return redirect(url_for('index'))
 
     stop_res = run_system_command(['systemctl', 'stop', safe_service_name])
-    if stop_res["is_ok"]:
+    if stop_res["success"]:
         flash(f"Service {safe_service_name} stopped.", "success")
     # else: error already flashed
     return redirect(url_for('index'))
@@ -325,7 +334,7 @@ def restart_service(service_file_name):
         return redirect(url_for('index'))
 
     restart_res = run_system_command(['systemctl', 'restart', safe_service_name])
-    if restart_res["is_ok"]:
+    if restart_res["success"]:
         flash(f"Service {safe_service_name} restarted.", "success")
     # else: error already flashed
     return redirect(url_for('index'))
@@ -358,12 +367,12 @@ def delete_service(service_file_name):
 
     # 2. Disable the service
     disable_res = run_system_command(['systemctl', 'disable', safe_service_name])
-    # if disable_res["is_ok"]: flash(f"Service {safe_service_name} disabled.", "info")
+    # if disable_res["success"]: flash(f"Service {safe_service_name} disabled.", "info")
 
     # 3. Remove the service file
     if os.path.exists(service_unit_filepath):
         rm_res = run_system_command(['rm', service_unit_filepath]) 
-        if rm_res["is_ok"]:
+        if rm_res["success"]:
             flash(f"Service file {safe_service_name} deleted.", "info")
         # else: error flashed by run_system_command
             
@@ -391,12 +400,11 @@ def update_service(original_service_name):
     safe_original_service_name = secure_filename(original_service_name)
 
     # Formdan verileri al
-    new_description = request.form.get('description')
-    new_exec_start = request.form.get('exec_start')
-    new_service_user = request.form.get('service_user') # Boş olabilir
-    new_code_dir_name_input = request.form.get('code_dir_name') # Boş olabilir
-
-    new_github_url = request.form.get('github_url')
+    new_description = request.form.get('description', '').strip()
+    new_exec_start = request.form.get('exec_start', '').strip()
+    new_service_user = request.form.get('service_user', '').strip()
+    new_code_dir_name_form = request.form.get('code_dir_name', '').strip() # User's desired code_dir_name
+    new_github_url = request.form.get('github_url', '').strip()
     new_service_files_zip = request.files.get('service_files')
 
     if not all([new_description, new_exec_start]):
@@ -431,7 +439,7 @@ def update_service(original_service_name):
         return redirect(url_for('index'))
     
     # Kod dizini adını ve yolunu belirle
-    final_code_dir_name = secure_filename(new_code_dir_name_input) if new_code_dir_name_input else None
+    final_code_dir_name = secure_filename(new_code_dir_name_form) if new_code_dir_name_form else None
     
     # Eğer formda yeni bir kod dizini adı belirtilmemişse, mevcut WorkingDirectory'den dizin adını al
     if not final_code_dir_name and current_working_dir.startswith(os.path.abspath(app.config['UPLOAD_FOLDER'])):
@@ -466,7 +474,7 @@ def update_service(original_service_name):
 
         if new_github_url:
             clone_res = run_system_command(['git', 'clone', new_github_url, absolute_new_service_code_path])
-            if not clone_res["is_ok"]:
+            if not clone_res["success"]:
                 shutil.rmtree(absolute_new_service_code_path, ignore_errors=True) # Hata durumunda temizle
                 return redirect(url_for('index')) # Hata zaten flashlandı
             flash(f"GitHub deposu {absolute_new_service_code_path} dizinine klonlandı.", "success")
@@ -575,7 +583,7 @@ def update_service(original_service_name):
 
     # Systemd'yi yeniden yükle
     daemon_reload_res = run_system_command(['systemctl', 'daemon-reload'])
-    if daemon_reload_res["is_ok"]:
+    if daemon_reload_res["success"]:
         flash("Systemd daemon yeniden yüklendi. Değişikliklerin etkili olması için servisi yeniden başlatmanız gerekebilir.", "info")
     else:
         flash("Systemd daemon yeniden yüklenemedi. Değişiklikler etkili olmayabilir.", "warning")
@@ -591,11 +599,11 @@ def get_service_logs(service_file_name):
     # Fetch last 100 lines, newest first. --no-hostname omits hostname from each line.
     # Consider adding --output cat for very plain output if needed, but default should be fine.
     log_command_res = run_system_command(
-        ['journalctl', '-u', safe_service_name, '-n', '100', '--no-pager', '--reverse'],
+        ['journalctl', '-u', safe_service_name, '-n', '300', '--no-pager', '--reverse'],
         successful_return_codes=[0] # journalctl should return 0 if logs are found or not (empty set is not an error for it)
     )
 
-    if log_command_res["is_ok"]:
+    if log_command_res["success"]:
         # If stdout is empty but stderr has "No entries", it means no logs, which is fine.
         if not log_command_res["stdout"] and "No entries" in log_command_res["stderr"]:
              return jsonify({"logs": "-- Bu servis için henüz log kaydı bulunmuyor. --"})
