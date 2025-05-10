@@ -454,49 +454,101 @@ def update_service(original_service_name):
     # Kaynak kodu güncelleme/değiştirme mantığı
     code_updated_or_moved = False
     if new_github_url or (new_service_files_zip and new_service_files_zip.filename != ''):
-        flash("Yeni kaynak kodu sağlanıyor. Mevcut kodlar güncellenecek/değiştirilecek.", "info")
-        # Eski kod dizinini (current_working_dir) veya yeni belirlenen new_service_code_path'ı temizle
-        # Eğer new_service_code_path, current_working_dir ile aynı değilse, current_working_dir'i de silmek mantıklı olabilir (kullanıcıya sormak lazım?)
-        # Şimdilik, sadece new_service_code_path'ı hazırlayalım.
-        if os.path.exists(absolute_new_service_code_path):
-            try:
-                shutil.rmtree(absolute_new_service_code_path)
-                flash(f"Mevcut kod dizini {absolute_new_service_code_path} temizlendi.", "info")
-            except Exception as e:
-                flash(f"Mevcut kod dizini {absolute_new_service_code_path} temizlenirken hata: {e}", "error")
-                return redirect(url_for('index'))
-        
-        try:
-            os.makedirs(absolute_new_service_code_path, exist_ok=True)
-        except OSError as e:
-            flash(f"Yeni kod dizini {absolute_new_service_code_path} oluşturulamadı: {e}", "error")
-            return redirect(url_for('index'))
-
         if new_github_url:
-            clone_res = run_system_command(['git', 'clone', new_github_url, absolute_new_service_code_path])
-            if not clone_res["success"]:
-                shutil.rmtree(absolute_new_service_code_path, ignore_errors=True) # Hata durumunda temizle
-                return redirect(url_for('index')) # Hata zaten flashlandı
-            flash(f"GitHub deposu {absolute_new_service_code_path} dizinine klonlandı.", "success")
+            is_git_repo = os.path.isdir(os.path.join(absolute_new_service_code_path, '.git'))
+            perform_clone = True # Varsayılan olarak klonla
+
+            if is_git_repo:
+                # Mevcut bir git deposu, remote URL'in eşleşip eşleşmediğini kontrol et
+                get_remote_cmd = ['git', '-C', absolute_new_service_code_path, 'config', '--get', 'remote.origin.url']
+                # Bu iç kontrol için run_system_command'ın hata flashlamasını istemiyoruz, sadece sonucu kontrol edeceğiz.
+                # Ancak mevcut run_system_command yapısı her zaman flashlar. Şimdilik bu şekilde devam edelim.
+                # Alternatif olarak, bu özel komut için subprocess.run doğrudan kullanılabilir.
+                remote_res = run_system_command(get_remote_cmd) # successful_return_codes=[0] default
+
+                if remote_res["success"] and remote_res["stdout"].strip() == new_github_url.strip():
+                    # Remote URL eşleşiyor, git pull yapmayı dene
+                    perform_clone = False
+                    flash(f"Mevcut depo ({absolute_new_service_code_path}) için '{new_github_url}' adresinden güncellemeler çekiliyor (git pull)...", "info")
+                    pull_cmd = ['git', '-C', absolute_new_service_code_path, 'pull']
+                    pull_res = run_system_command(pull_cmd)
+                    if pull_res["success"]:
+                        flash(f"Depo '{absolute_new_service_code_path}' başarıyla güncellendi (git pull).", "success")
+                        code_updated_or_moved = True
+                    else:
+                        # run_system_command zaten genel bir hata flashladı. Ekstra bağlam ekleyelim.
+                        flash(f"'{absolute_new_service_code_path}' dizininde 'git pull' başarısız oldu. Lütfen çakışmaları manuel olarak çözün veya farklı bir kod dizini adı belirterek yeniden klonlamayı deneyin. Git çıktısı: {pull_res['stderr']}", "error")
+                        return redirect(url_for('index')) # Güncelleme işlemini durdur
+                else:
+                    if not remote_res["success"]:
+                        flash(f"Mevcut deponun ({absolute_new_service_code_path}) remote URL'i okunamadı. Depo yeniden klonlanacak. Git hatası: {remote_res['stderr']}", "warning")
+                    else: # URL'ler eşleşmedi
+                        flash(f"Yeni GitHub URL'i ({new_github_url}) mevcut depodaki remote ({remote_res['stdout'].strip()}) ile farklı. Depo yeniden klonlanacak.", "info")
+                    # perform_clone zaten True
+            
+            if perform_clone:
+                flash(f"'{new_github_url}' deposu '{absolute_new_service_code_path}' dizinine klonlanıyor...", "info")
+                if os.path.exists(absolute_new_service_code_path):
+                    try:
+                        shutil.rmtree(absolute_new_service_code_path)
+                    except Exception as e:
+                        flash(f"Mevcut kod dizini ({absolute_new_service_code_path}) temizlenirken bir hata oluştu: {e}", "error")
+                        return redirect(url_for('index'))
+                
+                try:
+                    os.makedirs(absolute_new_service_code_path, exist_ok=True)
+                except OSError as e:
+                    flash(f"Yeni kod dizini ({absolute_new_service_code_path}) oluşturulurken bir hata oluştu: {e}", "error")
+                    return redirect(url_for('index'))
+
+                clone_cmd = ['git', 'clone', new_github_url, absolute_new_service_code_path]
+                clone_res = run_system_command(clone_cmd)
+                if clone_res["success"]:
+                    flash(f"GitHub deposu '{new_github_url}' başarıyla '{absolute_new_service_code_path}' dizinine klonlandı.", "success")
+                    code_updated_or_moved = True
+                else:
+                    # run_system_command zaten hatayı flashladı.
+                    return redirect(url_for('index')) # Güncelleme işlemini durdur
+        
         elif new_service_files_zip and new_service_files_zip.filename != '':
+            flash(f"ZIP dosyası işleniyor, kodlar '{absolute_new_service_code_path}' dizininde güncellenecek...", "info")
+            if os.path.exists(absolute_new_service_code_path):
+                try:
+                    shutil.rmtree(absolute_new_service_code_path)
+                except Exception as e:
+                    flash(f"Mevcut kod dizini ({absolute_new_service_code_path}) temizlenirken hata: {e}", "error")
+                    return redirect(url_for('index'))
+            
+            try:
+                os.makedirs(absolute_new_service_code_path, exist_ok=True)
+            except OSError as e:
+                flash(f"Yeni kod dizini ({absolute_new_service_code_path}) oluşturulamadı: {e}", "error")
+                return redirect(url_for('index'))
+
             if not new_service_files_zip.filename.endswith('.zip'):
                 flash("Yüklenen dosya ZIP arşivi olmalıdır.", "error")
-                shutil.rmtree(absolute_new_service_code_path, ignore_errors=True)
+                if os.path.exists(absolute_new_service_code_path): # Oluşturulmuş olabilir, temizle
+                    shutil.rmtree(absolute_new_service_code_path, ignore_errors=True)
                 return redirect(url_for('index'))
             
             zip_filename = secure_filename(new_service_files_zip.filename)
-            zip_filepath = os.path.join(absolute_new_service_code_path, zip_filename)
-            new_service_files_zip.save(zip_filepath)
+            # ZIP dosyasını geçici bir yerde saklamak yerine doğrudan UPLOAD_FOLDER ana dizinine kaydedip oradan işleyebiliriz.
+            # Veya daha güvenli bir /tmp benzeri yer. Şimdilik UPLOAD_FOLDER ana dizini.
+            temp_zip_filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"temp_{zip_filename}")
+            new_service_files_zip.save(temp_zip_filepath)
             try:
-                with zipfile.ZipFile(zip_filepath, 'r') as zip_ref:
-                    zip_ref.extractall(absolute_new_service_code_path)
-                os.remove(zip_filepath)
+                with zipfile.ZipFile(temp_zip_filepath, 'r') as zip_ref:
+                    zip_ref.extractall(absolute_new_service_code_path) # Hedef dizine aç
                 flash(f"{zip_filename} başarıyla {absolute_new_service_code_path} dizinine çıkartıldı.", "success")
+                code_updated_or_moved = True
             except Exception as e:
                 flash(f"ZIP dosyası işlenirken hata: {e}", "error")
-                shutil.rmtree(absolute_new_service_code_path, ignore_errors=True)
+                if os.path.exists(absolute_new_service_code_path): # Hedef dizini temizle
+                     shutil.rmtree(absolute_new_service_code_path, ignore_errors=True)
                 return redirect(url_for('index'))
-        code_updated_or_moved = True
+            finally:
+                if os.path.exists(temp_zip_filepath):
+                    os.remove(temp_zip_filepath) # Geçici ZIP dosyasını sil
     elif absolute_new_service_code_path != os.path.abspath(current_working_dir):
         # Kod dizini adı değiştirildi ama yeni kaynak sağlanmadı.
         # Eski içeriği yeni yola taşımayı deneyebiliriz veya kullanıcıyı uyarabiliriz.
