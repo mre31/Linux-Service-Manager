@@ -4,116 +4,427 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linux Servis Yöneticisi</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
-        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        h1, h2 { color: #333; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-        th { background-color: #e9e9e9; }
-        .actions a { margin-right: 10px; text-decoration: none; color: #007bff; }
-        .actions a:hover { text-decoration: underline; }
-        .form-section { margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;}
-        .form-section h2 { margin-top: 0; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], input[type="file"], textarea {
-            width: calc(100% - 22px);
-            padding: 10px;
-            margin-bottom: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+        /* For smooth transitions on modals */
+        .modal {
+            transition: opacity 0.25s ease;
         }
-        button {
-            background-color: #007bff; color: white; padding: 10px 15px; border: none;
-            border-radius: 4px; cursor: pointer; font-size: 16px;
+        .modal-content {
+            transition: transform 0.25s ease;
         }
-        button:hover { background-color: #0056b3; }
-        .status-active { color: green; font-weight: bold; }
-        .status-inactive { color: red; font-weight: bold; }
-        .status-failed { color: orange; font-weight: bold; }
-        .flashes { list-style-type: none; padding: 0; margin-bottom: 15px; }
-        .flashes li { padding: 10px; margin-bottom: 10px; border-radius: 4px; color: #fff; }
-        .flashes li.error { background-color: #dc3545; }
-        .flashes li.success { background-color: #28a745; }
-        .flashes li.info { background-color: #17a2b8; }
-        .flashes li.warning { background-color: #ffc107; color: #333; }
+        /* Custom scrollbar for webkit browsers */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .status-active { color: #10B981; /* Tailwind green-600 */ }
+        .status-inactive { color: #EF4444; /* Tailwind red-500 */ }
+        .status-failed { color: #F59E0B; /* Tailwind amber-500 */ }
+        .status-unknown { color: #6B7280; /* Tailwind gray-500 */ }
+        .status-error_checking_status { color: #D97706; /* Tailwind amber-600 */}
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1>Linux Servis Yöneticisi</h1>
+<body class="bg-gray-100 text-gray-800">
 
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-700">Linux Servis Yöneticisi</h1>
+        </header>
+
+        <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            <ul class="flashes">
-            {% for category, message in messages %}
-              <li class="{{ category }}">{{ message }}</li>
-            {% endfor %}
-            </ul>
-          {% endif %}
+            {% if messages %}
+            <div id="flash-messages-container" class="mb-4 space-y-2">
+                {% for category, message in messages %}
+                <div class="p-4 rounded-md {% if category == 'error' %}bg-red-100 text-red-700{% elif category == 'success' %}bg-green-100 text-green-700{% elif category == 'info' %}bg-blue-100 text-blue-700{% else %}bg-yellow-100 text-yellow-700{% endif %}" role="alert">
+                    <p>{{ message }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
         {% endwith %}
 
-        <div class="form-section">
-            <h2>Yeni Servis Oluştur</h2>
-            <form action="/create_service" method="post" enctype="multipart/form-data">
-                <label for="service_name">Servis Adı (örn: myapp):</label>
-                <input type="text" id="service_name" name="service_name" required>
-
-                <label for="code_dir_name">Kod Dizini Adı (isteğe bağlı, 'services/' altında, örn: myapp_code):</label>
-                <input type="text" id="code_dir_name" name="code_dir_name" placeholder="Boş bırakılırsa servis adıyla aynı olur">
-
-                <label for="description">Açıklama:</label>
-                <input type="text" id="description" name="description" required>
-
-                <label for="exec_start">Çalıştırılacak Komut (kod dizinine göreceli veya mutlak yol, örn: python3 app.py veya /usr/bin/node server.js):</label>
-                <input type="text" id="exec_start" name="exec_start" required>
-
-                <label for="service_user">Çalıştırılacak Kullanıcı (isteğe bağlı, örn: www-data, myuser):</label>
-                <input type="text" id="service_user" name="service_user" placeholder="Boş bırakılırsa varsayılan (root)">
-                
-                <p><strong>Kaynak Kodu:</strong></p>
-                <label for="github_url">GitHub Repo URL (isteğe bağlı):</label>
-                <input type="text" id="github_url" name="github_url" placeholder="https://github.com/user/repo.git">
-                
-                <label for="service_files">Veya Dosyaları Yükle (ZIP arşivi):</label>
-                <input type="file" id="service_files" name="service_files" accept=".zip">
-
-                <button type="submit">Servis Oluştur</button>
-            </form>
+        <div class="mb-6 text-right">
+            <button onclick="openModal('createServiceModal')" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                </svg>
+                Yeni Servis Oluştur
+            </button>
         </div>
 
-        <h2>Mevcut Servisler</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Servis Adı</th>
-                    <th>Açıklama</th>
-                    <th>Durum</th>
-                    <th>Eylemler</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if services %}
-                    {% for service in services %}
-                    <tr>
-                        <td>{{ service.name }}</td>
-                        <td>{{ service.description }}</td>
-                        <td class="status-{{ service.status.lower() }}">{{ service.status }}</td>
-                        <td class="actions">
-                            <a href="/start_service/{{ service.name }}">Başlat</a>
-                            <a href="/stop_service/{{ service.name }}">Durdur</a>
-                            <a href="/restart_service/{{ service.name }}">Yeniden Başlat</a>
-                            <a href="/delete_service/{{ service.name }}" onclick="return confirm('Bu servisi silmek istediğinizden emin misiniz?');">Sil</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td colspan="4" style="text-align:center;">Henüz servis bulunmuyor.</td>
-                    </tr>
-                {% endif %}
-            </tbody>
-        </table>
+        <!-- Services Table -->
+        <div class="bg-white shadow-xl rounded-lg overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Servis Adı</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Açıklama</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kullanıcı</th>
+                            <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Durum</th>
+                            <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Eylemler</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% if services %}
+                            {% for service in services %}
+                            <tr class="hover:bg-gray-50 transition-colors duration-150">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ service.name }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ service.description }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ service.user if service.user != 'N/A' else '-' }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full status-{{ service.status.lower() if service.status else 'unknown' }}">
+                                        {{ service.status if service.status else 'Bilinmiyor' }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-center space-x-2">
+                                    <a href="{{ url_for('start_service', service_file_name=service.name) }}" class="text-green-500 hover:text-green-700" title="Başlat">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+                                    </a>
+                                    <a href="{{ url_for('stop_service', service_file_name=service.name) }}" class="text-red-500 hover:text-red-700" title="Durdur">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 9a1 1 0 00-1 1v1a1 1 0 002 0V10a1 1 0 00-1-1zm4 0a1 1 0 00-1 1v1a1 1 0 002 0V10a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                                    </a>
+                                    <a href="{{ url_for('restart_service', service_file_name=service.name) }}" class="text-yellow-500 hover:text-yellow-700" title="Yeniden Başlat">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm1 C5.73 2.03 7.26 1 9 1a7.002 7.002 0 016.485 10.304A1 1 0 0114.115 12a5.002 5.002 0 00-9.115-3H5V2z" clip-rule="evenodd" /></svg>
+                                    </a>
+                                    <button data-service='{{ service | tojson | safe }}' onclick="prepareAndOpenEditModal(this)" class="text-indigo-500 hover:text-indigo-700" title="Düzenle">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                                    </button>
+                                    <button onclick="openLogsModal('{{ service.name }}')" class="text-teal-500 hover:text-teal-700" title="Logları Görüntüle">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+                                        </svg>
+                                    </button>
+                                    <button onclick="openDeleteModal('{{ service.name }}')" class="text-pink-500 hover:text-pink-700" title="Sil">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-12 text-center text-sm text-gray-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                    </svg>
+                                    <p class="mt-2">Henüz servis bulunmuyor.</p>
+                                    <p class="mt-1 text-xs">Yukarıdaki "Yeni Servis Oluştur" butonu ile başlayabilirsiniz.</p>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
+
+    <!-- Create Service Modal -->
+    <div id="createServiceModal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50" onclick="checkCloseModal(event, 'createServiceModal')">
+        <div class="modal-content bg-white p-6 md:p-8 rounded-lg shadow-xl w-11/12 md:w-2/3 lg:w-1/2 max-h-screen overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-semibold text-gray-700">Yeni Servis Oluştur</h2>
+                <button onclick="closeModal('createServiceModal')" class="text-gray-400 hover:text-gray-600 transition duration-150">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <form action="{{ url_for('create_service') }}" method="post" enctype="multipart/form-data" class="space-y-4">
+                <div>
+                    <label for="create_service_name" class="block text-sm font-medium text-gray-700 mb-1">Servis Adı <span class="text-red-500">*</span></label>
+                    <input type="text" id="create_service_name" name="service_name" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="nginx_proxy">
+                </div>
+                <div>
+                    <label for="create_code_dir_name" class="block text-sm font-medium text-gray-700 mb-1">Kod Dizini Adı (isteğe bağlı, /srv/ altında)</label>
+                    <input type="text" id="create_code_dir_name" name="code_dir_name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="Boş bırakılırsa servis adıyla aynı olur">
+                </div>
+                <div>
+                    <label for="create_description" class="block text-sm font-medium text-gray-700 mb-1">Açıklama <span class="text-red-500">*</span></label>
+                    <input type="text" id="create_description" name="description" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="Projem için Nginx ters proxy servisi">
+                </div>
+                <div>
+                    <label for="create_exec_start" class="block text-sm font-medium text-gray-700 mb-1">Çalıştırılacak Komut <span class="text-red-500">*</span></label>
+                    <input type="text" id="create_exec_start" name="exec_start" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="python3 main.py veya /usr/local/bin/my_app --config /srv/myapp_code/config.json">
+                     <p class="mt-1 text-xs text-gray-500">Kod dizinine göreceli (örn: `python app.py`) veya mutlak yol (örn: `/usr/bin/node server.js`) olabilir.</p>
+                </div>
+                <div>
+                    <label for="create_service_user" class="block text-sm font-medium text-gray-700 mb-1">Çalıştırılacak Kullanıcı (isteğe bağlı)</label>
+                    <input type="text" id="create_service_user" name="service_user" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="www-data (boş bırakılırsa root)">
+                </div>
+                <div class="border-t pt-4">
+                    <p class="text-sm font-medium text-gray-700 mb-2">Kaynak Kodu <span class="text-red-500">*</span></p>
+                    <div class="space-y-2">
+                        <div>
+                            <label for="create_github_url" class="block text-xs font-medium text-gray-600">GitHub Repo URL (isteğe bağlı):</label>
+                            <input type="text" id="create_github_url" name="github_url" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="https://github.com/user/repo.git">
+                        </div>
+                        <div class="text-center my-2 text-xs text-gray-500">VEYA</div>
+                        <div>
+                            <label for="create_service_files" class="block text-xs font-medium text-gray-600">Dosyaları Yükle (ZIP arşivi):</label>
+                            <input type="file" id="create_service_files" name="service_files" accept=".zip" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                        </div>
+                    </div>
+                </div>
+                <div class="pt-6 text-right space-x-3">
+                    <button type="button" onclick="closeModal('createServiceModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg transition duration-150 ease-in-out">İptal</button>
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">Servis Oluştur</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Service Modal -->
+    <div id="editServiceModal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50" onclick="checkCloseModal(event, 'editServiceModal')">
+        <div class="modal-content bg-white p-6 md:p-8 rounded-lg shadow-xl w-11/12 md:w-2/3 lg:w-1/2 max-h-screen overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-semibold text-gray-700">Servisi Düzenle</h2>
+                <button onclick="closeModal('editServiceModal')" class="text-gray-400 hover:text-gray-600 transition duration-150">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <!-- Formun action'ı dinamik olarak JS ile set edilecek -->
+            <form id="editServiceForm" method="post" enctype="multipart/form-data" class="space-y-4">
+                 <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Servis Adı</label>
+                    <input type="text" id="edit_service_name_display" name="service_name_display" readonly class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 sm:text-sm" placeholder="Servis adı değiştirilemez">
+                    <input type="hidden" id="edit_original_service_name" name="original_service_name">
+                </div>
+                <div>
+                    <label for="edit_code_dir_name" class="block text-sm font-medium text-gray-700 mb-1">Kod Dizini Adı (/srv/ altında)</label>
+                    <input type="text" id="edit_code_dir_name" name="code_dir_name" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    <p class="mt-1 text-xs text-gray-500">Dikkat: Değiştirirseniz, kod dosyalarını manuel taşımanız gerekebilir veya aşağıdan yeni kaynak belirtebilirsiniz.</p>
+                </div>
+                <div>
+                    <label for="edit_description" class="block text-sm font-medium text-gray-700 mb-1">Açıklama <span class="text-red-500">*</span></label>
+                    <input type="text" id="edit_description" name="description" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="edit_exec_start" class="block text-sm font-medium text-gray-700 mb-1">Çalıştırılacak Komut <span class="text-red-500">*</span></label>
+                    <input type="text" id="edit_exec_start" name="exec_start" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="edit_service_user" class="block text-sm font-medium text-gray-700 mb-1">Çalıştırılacak Kullanıcı</label>
+                    <input type="text" id="edit_service_user" name="service_user" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                </div>
+                <div class="border-t pt-4">
+                    <p class="text-sm font-medium text-gray-700 mb-2">Kaynak Kodunu Güncelle (isteğe bağlı)</p>
+                     <p class="text-xs text-gray-500 mb-2">Yeni bir URL veya ZIP dosyası sağlarsanız mevcut kodlar silinip yenileriyle değiştirilir.</p>
+                    <div class="space-y-2">
+                        <div>
+                            <label for="edit_github_url" class="block text-xs font-medium text-gray-600">GitHub Repo URL:</label>
+                            <input type="text" id="edit_github_url" name="github_url" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="https://github.com/user/repo.git">
+                        </div>
+                         <div class="text-center my-2 text-xs text-gray-500">VEYA</div>
+                        <div>
+                            <label for="edit_service_files" class="block text-xs font-medium text-gray-600">Yeni Dosyaları Yükle (ZIP):</label>
+                            <input type="file" id="edit_service_files" name="service_files" accept=".zip" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                        </div>
+                    </div>
+                </div>
+                <div class="pt-6 text-right space-x-3">
+                    <button type="button" onclick="closeModal('editServiceModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg transition duration-150 ease-in-out">İptal</button>
+                    <button type="submit" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">Değişiklikleri Kaydet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteConfirmModal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50" onclick="checkCloseModal(event, 'deleteConfirmModal')">
+        <div class="modal-content bg-white p-6 md:p-8 rounded-lg shadow-xl w-11/12 md:w-1/3">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-700">Servisi Sil?</h2>
+                 <button onclick="closeModal('deleteConfirmModal')" class="text-gray-400 hover:text-gray-600 transition duration-150">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <p class="text-gray-600 mb-6">
+                "<strong id="deleteServiceName"></strong>" adlı servisi ve ilişkili kod dosyalarını silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+            </p>
+            <div class="text-right space-x-3">
+                <button type="button" onclick="closeModal('deleteConfirmModal')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg transition duration-150 ease-in-out">İptal</button>
+                <a id="confirmDeleteButton" href="#" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out">Evet, Sil</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Logs Modal -->
+    <div id="viewLogsModal" class="modal fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50" onclick="checkCloseModal(event, 'viewLogsModal')">
+        <div class="modal-content bg-gray-800 text-gray-200 p-6 rounded-lg shadow-xl w-11/12 md:w-3/4 lg:w-2/3 max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                <h2 class="text-xl font-semibold">Loglar: <span id="logServiceName" class="text-blue-400"></span></h2>
+                <div>
+                    <button onclick="fetchServiceLogs(document.getElementById('logServiceName').textContent)" class="bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md text-sm mr-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm1 C5.73 2.03 7.26 1 9 1a7.002 7.002 0 016.485 10.304A1 1 0 0114.115 12a5.002 5.002 0 00-9.115-3H5V2z" clip-rule="evenodd" />
+                        </svg>
+                        Yenile
+                    </button>
+                    <button onclick="closeModal('viewLogsModal')" class="text-gray-400 hover:text-gray-300 transition duration-150">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            </div>
+            <pre id="serviceLogContent" class="bg-gray-900 p-4 rounded-md overflow-auto flex-grow text-xs whitespace-pre-wrap break-all"><code class="language-log">Loglar yükleniyor...</code></pre>
+        </div>
+    </div>
+
+    <script>
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.remove('hidden');
+            document.body.classList.add('overflow-hidden'); // Prevent background scrolling
+        }
+
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.classList.add('hidden');
+            document.body.classList.remove('overflow-hidden');
+
+            // Reset forms inside modals when closed
+            const forms = modal.querySelectorAll('form');
+            forms.forEach(form => form.reset());
+            if (modalId === 'editServiceModal') {
+                // Clear specific fields that might not reset properly or have dynamic content
+                document.getElementById('edit_service_name_display').value = '';
+                document.getElementById('edit_original_service_name').value = '';
+                document.getElementById('edit_code_dir_name').value = '';
+                document.getElementById('edit_description').value = '';
+                document.getElementById('edit_exec_start').value = '';
+                document.getElementById('edit_service_user').value = '';
+                document.getElementById('edit_github_url').value = '';
+                document.getElementById('edit_service_files').value = null;
+            }
+        }
+        
+        function checkCloseModal(event, modalId) {
+            // Close modal if background is clicked
+            if (event.target.id === modalId) {
+                closeModal(modalId);
+            }
+        }
+
+        function prepareAndOpenEditModal(buttonElement) {
+            const serviceJson = buttonElement.getAttribute('data-service');
+            try {
+                const service = JSON.parse(serviceJson);
+                openEditModal(service);
+            } catch (e) {
+                console.error("Error parsing service JSON:", e, serviceJson);
+                alert("Servis detayları yüklenirken bir hata oluştu.");
+            }
+        }
+
+        function openEditModal(service) {
+            // service object is passed as JSON string and parsed
+            // console.log("Editing service:", service);
+            document.getElementById('editServiceForm').action = `/update_service/${service.name}`;
+            document.getElementById('edit_original_service_name').value = service.name;
+            document.getElementById('edit_service_name_display').value = service.name;
+            
+            // Attempt to extract code_dir_name from working_dir
+            // Assuming UPLOAD_FOLDER is /srv/
+            let codeDirName = '';
+            if (service.working_dir && service.working_dir.startsWith('/srv/')) {
+                codeDirName = service.working_dir.substring('/srv/'.length);
+            } else if (service.working_dir) {
+                // If working_dir is not under /srv/, show it as is, but user might not be able to easily change it relative to /srv/
+                 codeDirName = service.working_dir; // This might be confusing, consider read-only or a warning
+            }
+
+            document.getElementById('edit_code_dir_name').value = codeDirName;
+            document.getElementById('edit_description').value = service.description || '';
+            
+            // Try to get ExecStart from app.py (this is not directly available in current service object)
+            // For now, we will leave this to be fetched or handled in update logic.
+            // A better approach would be for get_systemd_services to also parse ExecStart.
+            // Or, an AJAX call to get full service details.
+            // For now, leave it potentially blank or require user to re-enter if changing.
+            document.getElementById('edit_exec_start').value = service.exec_start && service.exec_start !== 'N/A' ? service.exec_start : '';
+            
+            document.getElementById('edit_service_user').value = (service.user && service.user !== 'N/A') ? service.user : '';
+            // We don't know the original github_url or if it was a zip from the current service data.
+            // User will have to re-specify if they want to change code source.
+            document.getElementById('edit_github_url').value = ''; 
+            document.getElementById('edit_service_files').value = null;
+
+            openModal('editServiceModal');
+        }
+
+        function openDeleteModal(serviceName) {
+            document.getElementById('deleteServiceName').textContent = serviceName;
+            document.getElementById('confirmDeleteButton').href = `/delete_service/${serviceName}`;
+            openModal('deleteConfirmModal');
+        }
+
+        async function fetchServiceLogs(serviceName, modalId = 'viewLogsModal') {
+            const logContentElement = document.getElementById('serviceLogContent');
+            if (!logContentElement) return;
+            logContentElement.innerHTML = '<code class="language-log">Loglar yükleniyor...</code>'; // Show loading state
+            
+            try {
+                const response = await fetch(`/get_service_logs/${serviceName}`);
+                if (!response.ok) {
+                    let errorMsg = `Loglar alınırken hata oluştu: ${response.status}`;
+                    try {
+                        const errData = await response.json();
+                        errorMsg += `: ${errData.error || 'Bilinmeyen sunucu hatası'}`;
+                    } catch (e) { /* no json body */ }
+                    throw new Error(errorMsg);
+                }
+                const data = await response.json();
+                if (data.logs) {
+                    // Escape HTML to prevent XSS if logs contain HTML-like strings
+                    const escapedLogs = data.logs.replace(/[&<>\"]/g, function (tag) {
+                        const charsToReplace = {
+                            '&': '&amp;',
+                            '<': '&lt;',
+                            '>': '&gt;',
+                            '"': '&quot;'
+                        };
+                        return charsToReplace[tag] || tag;
+                    });
+                    logContentElement.innerHTML = `<code class="language-log">${escapedLogs || '(Log bulunamadı veya boş)'}</code>`;
+                } else {
+                    logContentElement.innerHTML = '<code class="language-log">(Log bulunamadı veya boş)</code>';
+                }
+            } catch (error) {
+                console.error("Error fetching service logs:", error);
+                logContentElement.innerHTML = `<code class="language-log text-red-400">Hata: ${error.message}</code>`;
+            }
+        }
+
+        function openLogsModal(serviceName) {
+            document.getElementById('logServiceName').textContent = serviceName;
+            fetchServiceLogs(serviceName, 'viewLogsModal'); // Fetch logs when modal opens
+            openModal('viewLogsModal');
+        }
+
+        // Auto-hide flash messages after some time
+        setTimeout(() => {
+            const flashContainer = document.getElementById('flash-messages-container');
+            if (flashContainer) {
+                let opacity = 1;
+                const fadeInterval = setInterval(function() {
+                    if (opacity <= 0) {
+                        clearInterval(fadeInterval);
+                        flashContainer.style.display = 'none';
+                    }
+                    flashContainer.style.opacity = opacity;
+                    opacity -= 0.05;
+                }, 50);
+            }
+        }, 5000); // Hide after 5 seconds
+    </script>
 </body>
 </html> 
