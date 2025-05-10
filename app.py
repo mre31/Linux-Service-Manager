@@ -6,7 +6,7 @@ import zipfile
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'services'
+app.config['UPLOAD_FOLDER'] = '/srv'
 app.config['SERVICE_FILES_FOLDER'] = '/etc/systemd/system' # Bu dizin sudo yetkisi gerektirebilir
 app.secret_key = 'super secret key' # Needed for flash messages
 
@@ -115,6 +115,7 @@ def create_service():
     code_dir_input = request.form.get('code_dir_name') # New field
     description = request.form.get('description')
     exec_start = request.form.get('exec_start')
+    service_user = request.form.get('service_user') # New field
     github_url = request.form.get('github_url')
     service_files_zip = request.files.get('service_files')
 
@@ -193,6 +194,9 @@ def create_service():
     # Create .service file
     # Ensure service_code_path is absolute for WorkingDirectory
     absolute_service_code_path = os.path.abspath(service_code_path)
+    
+    user_directive = f"User={service_user}" if service_user else "# User=your_user_name_here (not specified, runs as root by default)"
+
     service_file_content = f"""[Unit]
 Description={description}
 After=network.target
@@ -200,8 +204,8 @@ After=network.target
 [Service]
 ExecStart={exec_start}
 WorkingDirectory={absolute_service_code_path}
+{user_directive}
 Restart=always
-# User=your_user # Consider making this configurable or using a dedicated service user
 # Environment="PYTHONUNBUFFERED=1" # Example: if it's a Python app
 
 [Install]
