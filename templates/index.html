@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux Servis Yöneticisi</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #e9e9e9; }
+        .actions a { margin-right: 10px; text-decoration: none; color: #007bff; }
+        .actions a:hover { text-decoration: underline; }
+        .form-section { margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;}
+        .form-section h2 { margin-top: 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="file"], textarea {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff; color: white; padding: 10px 15px; border: none;
+            border-radius: 4px; cursor: pointer; font-size: 16px;
+        }
+        button:hover { background-color: #0056b3; }
+        .status-active { color: green; font-weight: bold; }
+        .status-inactive { color: red; font-weight: bold; }
+        .status-failed { color: orange; font-weight: bold; }
+        .flashes { list-style-type: none; padding: 0; margin-bottom: 15px; }
+        .flashes li { padding: 10px; margin-bottom: 10px; border-radius: 4px; color: #fff; }
+        .flashes li.error { background-color: #dc3545; }
+        .flashes li.success { background-color: #28a745; }
+        .flashes li.info { background-color: #17a2b8; }
+        .flashes li.warning { background-color: #ffc107; color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Linux Servis Yöneticisi</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flashes">
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <div class="form-section">
+            <h2>Yeni Servis Oluştur</h2>
+            <form action="/create_service" method="post" enctype="multipart/form-data">
+                <label for="service_name">Servis Adı (örn: myapp):</label>
+                <input type="text" id="service_name" name="service_name" required>
+
+                <label for="code_dir_name">Kod Dizini Adı (isteğe bağlı, 'services/' altında, örn: myapp_code):</label>
+                <input type="text" id="code_dir_name" name="code_dir_name" placeholder="Boş bırakılırsa servis adıyla aynı olur">
+
+                <label for="description">Açıklama:</label>
+                <input type="text" id="description" name="description" required>
+
+                <label for="exec_start">Çalıştırılacak Komut (kod dizinine göreceli veya mutlak yol, örn: python3 app.py veya /usr/bin/node server.js):</label>
+                <input type="text" id="exec_start" name="exec_start" required>
+                
+                <p><strong>Kaynak Kodu:</strong></p>
+                <label for="github_url">GitHub Repo URL (isteğe bağlı):</label>
+                <input type="text" id="github_url" name="github_url" placeholder="https://github.com/user/repo.git">
+                
+                <label for="service_files">Veya Dosyaları Yükle (ZIP arşivi):</label>
+                <input type="file" id="service_files" name="service_files" accept=".zip">
+
+                <button type="submit">Servis Oluştur</button>
+            </form>
+        </div>
+
+        <h2>Mevcut Servisler</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Servis Adı</th>
+                    <th>Açıklama</th>
+                    <th>Durum</th>
+                    <th>Eylemler</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if services %}
+                    {% for service in services %}
+                    <tr>
+                        <td>{{ service.name }}</td>
+                        <td>{{ service.description }}</td>
+                        <td class="status-{{ service.status.lower() }}">{{ service.status }}</td>
+                        <td class="actions">
+                            <a href="/start_service/{{ service.name }}">Başlat</a>
+                            <a href="/stop_service/{{ service.name }}">Durdur</a>
+                            <a href="/restart_service/{{ service.name }}">Yeniden Başlat</a>
+                            <a href="/delete_service/{{ service.name }}" onclick="return confirm('Bu servisi silmek istediğinizden emin misiniz?');">Sil</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="4" style="text-align:center;">Henüz servis bulunmuyor.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html> 
